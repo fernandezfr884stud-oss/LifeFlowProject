@@ -1,127 +1,260 @@
+import { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Image,
+  View,
 } from "react-native";
-import { useState } from "react";
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import PasswordField from "../components/PasswordField";
+
+const RED = "#730000";
+
+/*
+  Backend-ready login payload.
+
+  Purpose:
+  - Ito yung data na ipapasa sa backend later.
+  - Backend partner can use this format.
+*/
+type LoginPayload = {
+  email: string;
+  password: string;
+};
+
+/*
+  Backend placeholder.
+
+  Purpose:
+  - Ready-to-connect function.
+  - Later, papalitan ito ng real API call.
+*/
+const loginUser = async (payload: LoginPayload) => {
+  console.log("Login payload ready for backend:", payload);
+
+  /*
+    Temporary success response for front-end demo.
+    Later, backend should return user data and token/session.
+  */
+  return {
+    success: true,
+    user: {
+      id: 1,
+      email: payload.email,
+    },
+  };
+};
 
 export default function LoginScreen() {
-  /*
-    This controls if the password is visible or hidden.
-  */
-  const [showPassword, setShowPassword] = useState(false);
-
-  /*
-    This is used for navigation.
-    Example: going to dashboard or register page.
-  */
   const router = useRouter();
 
+  /*
+    Params can come from Register screen.
+    Example: after successful register, email can be auto-filled here.
+  */
+  const params = useLocalSearchParams<{
+    registered?: string;
+    email?: string;
+  }>();
+
+  /*
+    Form states.
+
+    Purpose:
+    - Stores email and password typed by user.
+  */
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  /*
+    UI states.
+
+    Purpose:
+    - showPassword controls eye icon.
+    - isSubmitting shows loading spinner while logging in.
+    - successMessage appears after coming from registration.
+  */
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  /*
+    If user came from Register, auto-fill email and show message.
+  */
+  useEffect(() => {
+    if (params.email) {
+      setEmail(String(params.email));
+    }
+  }, [params.email]);
+
+  /*
+    Front-end validation.
+
+    Purpose:
+    - Prevents empty or invalid login attempt.
+    - Backend should still validate again later.
+  */
+  const validateLogin = () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing details", "Please enter your email and password.");
+      return false;
+    }
+
+    if (!email.includes("@")) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return false;
+    }
+
+    return true;
+  };
+
+  /*
+    Login function.
+
+    Purpose:
+    - Validates login form.
+    - Builds backend-ready payload.
+    - Calls loginUser placeholder.
+    - Redirects to dashboard if login is successful.
+  */
+  const handleLogin = async () => {
+    if (!validateLogin()) return;
+
+    const payload: LoginPayload = {
+      email: email.trim().toLowerCase(),
+      password,
+    };
+
+    try {
+      setIsSubmitting(true);
+      Keyboard.dismiss();
+
+      const response = await loginUser(payload);
+
+      if (!response.success) {
+        Alert.alert("Login failed", "Invalid email or password.");
+        return;
+      }
+
+      /*
+        After successful login, go to dashboard.
+
+        Later:
+        - Save auth token/session here.
+        - Store user data globally or fetch profile from backend.
+      */
+      router.replace("/dashboard");
+    } catch (error) {
+      Alert.alert("Something went wrong", "Unable to sign in.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <View style={styles.container}>
-      {/* =========================
-          BRAND HEADER
-          Layout: [Picture] [LIFEFLOW]
-      ========================== */}
-      <View style={styles.brandRow}>
-        <Image
-          source={require("../../assets/images/LoginLogo.png")}
-          style={styles.brandLogo}
-          resizeMode="contain"
-        />
-
-        <Text style={styles.brandName}>LifeFlow</Text>
-      </View>
-
-      {/* =========================
-          PAGE TITLE
-      ========================== */}
-      <Text style={styles.title}>Connecting veins, saving lives</Text>
-      <Text style={styles.description}>Welcome to LifeFlow!</Text>
-
-      {/* =========================
-          EMAIL INPUT
-      ========================== */}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#999"
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-
-      {/* =========================
-          PASSWORD INPUT
-      ========================== */}
-      <View style={styles.passwordContainer}>
-        <TextInput
-          style={styles.passwordInput}
-          placeholder="Password"
-          placeholderTextColor="#999"
-          secureTextEntry={!showPassword}
-        />
-
-        {/* Eye icon for show/hide password */}
-        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-          <Ionicons
-            name={showPassword ? "eye-outline" : "eye-off-outline"}
-            size={22}
-            color="#777"
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* =========================
-          FORGOT PASSWORD
-      ========================== */}
-      <TouchableOpacity>
-        <Text style={styles.forgotPassword}>Forgot Password?</Text>
-      </TouchableOpacity>
-
-      {/* =========================
-          SIGN IN BUTTON
-      ========================== */}
-      <TouchableOpacity
-        style={styles.button}
-        activeOpacity={0.85}
-        onPress={() => router.replace("/dashboard")}
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.buttonText}>SIGN IN</Text>
-      </TouchableOpacity>
+        {/* Brand header: logo + app name */}
+        <View style={styles.brandRow}>
+          <Image
+            source={require("../../assets/images/LoginLogo.png")}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
 
-      {/* =========================
-          REGISTER LINK
-      ========================== */}
-      <View style={styles.registerRow}>
-        <Text style={styles.bottomText}>Don't have an account?</Text>
+          <Text style={styles.brandName}>LifeFlow</Text>
+        </View>
 
-        <TouchableOpacity onPress={() => router.push("/register")}>
-          <Text style={styles.link}>Register</Text>
+        {/* Welcome text */}
+        <Text style={styles.title}>Connecting veins, saving lives</Text>
+        <Text style={styles.description}>Welcome to LifeFlow!</Text>
+
+        {/* Email input */}
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#999"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+
+        {/* Reusable password input with eye icon */}
+        <PasswordField
+          placeholder="Password"
+          value={password}
+          visible={showPassword}
+          onChangeText={setPassword}
+          onToggle={() => setShowPassword(!showPassword)}
+        />
+
+        {/* Forgot password */}
+        <TouchableOpacity activeOpacity={0.85}>
+          <Text style={styles.forgotPassword}>Forgot Password?</Text>
         </TouchableOpacity>
-      </View>
-    </View>
+
+        {/* Sign in button */}
+        <TouchableOpacity
+          style={[styles.button, isSubmitting && styles.disabledButton]}
+          activeOpacity={0.85}
+          onPress={handleLogin}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>SIGN IN</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Register link */}
+        <View style={styles.registerRow}>
+          <Text style={styles.bottomText}>Don't have an account?</Text>
+
+          <TouchableOpacity onPress={() => router.push("/register")}>
+            <Text style={styles.link}>Register</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   /*
-    Main page container.
+    Full screen wrapper.
   */
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+
+  /*
+    Scroll content.
+    This keeps the login form centered but still scrollable on small screens.
+  */
+  container: {
+    flexGrow: 1,
     padding: 25,
     justifyContent: "center",
   },
 
   /*
-    Brand row:
-    Logo on the left, LIFEFLOW text on the right.
+    Brand header.
   */
   brandRow: {
     flexDirection: "row",
@@ -130,27 +263,21 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
 
-  /*
-    Change logo size here.
-  */
   brandLogo: {
     width: 85,
     height: 85,
     marginRight: 10,
   },
 
-  /*
-    LIFEFLOW brand text beside the logo.
-  */
   brandName: {
     fontSize: 50,
     fontWeight: "900",
-    color: "#730000",
+    color: RED,
     letterSpacing: 1,
   },
 
   /*
-    Page title.
+    Page text.
   */
   title: {
     fontSize: 23,
@@ -159,14 +286,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  /*
-    Subtitle under title.
-  */
   description: {
     color: "#777",
     textAlign: "center",
     marginTop: 6,
-    marginBottom: 35,
+    marginBottom: 25,
     fontSize: 14,
   },
 
@@ -184,31 +308,12 @@ const styles = StyleSheet.create({
   },
 
   /*
-    Password input container.
-  */
-  passwordContainer: {
-    backgroundColor: "#F1F1F1",
-    height: 55,
-    borderRadius: 30,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-
-  passwordInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#333",
-  },
-
-  /*
-    Forgot password text.
+    Forgot password.
   */
   forgotPassword: {
     alignSelf: "flex-end",
-    color: "#730000",
-    fontWeight: "600",
+    color: RED,
+    fontWeight: "700",
     marginBottom: 25,
   },
 
@@ -216,21 +321,25 @@ const styles = StyleSheet.create({
     Sign in button.
   */
   button: {
-    backgroundColor: "#730000",
+    backgroundColor: RED,
     height: 55,
     borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
   },
 
+  disabledButton: {
+    opacity: 0.7,
+  },
+
   buttonText: {
     color: "#FFFFFF",
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "900",
   },
 
   /*
-    Register section at the bottom.
+    Register link.
   */
   registerRow: {
     flexDirection: "row",
@@ -244,8 +353,8 @@ const styles = StyleSheet.create({
   },
 
   link: {
-    color: "#730000",
-    fontWeight: "bold",
+    color: RED,
+    fontWeight: "900",
     marginLeft: 5,
   },
 });

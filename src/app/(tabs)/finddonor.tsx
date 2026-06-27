@@ -3,7 +3,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  Image,
   ImageSourcePropType,
   Keyboard,
   Modal,
@@ -14,6 +13,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import BloodTypeAvatar from "../../components/BloodTypeAvatar";
+import ScreenHeader from "../../components/ScreenHeader";
+import StatusBadge from "../../components/StatusBadge";
+
+const RED = "#730000";
 
 type Donor = {
   id: number;
@@ -23,18 +27,69 @@ type Donor = {
   province: string;
   city: string;
   barangay: string;
-  availability: string;
+  availability: "Available" | "Not Available";
   profileImage?: ImageSourcePropType;
 };
 
-const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+/*
+  Backend-ready donor payload.
 
+  Purpose:
+  - This is the format that can be sent to backend later.
+*/
+type DonorPayload = {
+  name: string;
+  bloodType: string;
+  region: string;
+  province: string;
+  city: string;
+  barangay: string;
+  availability: "Available" | "Not Available";
+};
+
+const bloodTypes = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const availabilityOptions: Donor["availability"][] = ["Available", "Not Available"];
+
+/*
+  Temporary location data.
+
+  Purpose:
+  - Front-end demo muna.
+  - Later, backend/database can provide full location list.
+*/
+const locationData: Record<string, Record<string, Record<string, string[]>>> = {
+  "Ilocos Region": {
+    Pangasinan: {
+      "Dagupan City": [
+        "Bonuan Binloc",
+        "Bonuan Boquig",
+        "Bonuan Gueset",
+        "Pantal",
+        "Lucao",
+        "Malued",
+        "Tapuac",
+        "Poblacion Oeste",
+      ],
+      Calasiao: ["Poblacion", "Banaoang", "Lasip", "Nalsian"],
+      Mangaldan: ["Poblacion", "Guesang", "Banaoang", "Guilig"],
+      Binmaley: ["Poblacion", "Naguilayan", "Calit", "Biec"],
+    },
+  },
+};
+
+/*
+  Temporary donor data.
+
+  Purpose:
+  - Dummy data muna habang wala pang backend.
+  - Later, donors will be fetched from database/API.
+*/
 const initialDonors: Donor[] = [
   {
     id: 1,
     name: "Maria Santos",
     bloodType: "A+",
-    region: "Region I",
+    region: "Ilocos Region",
     province: "Pangasinan",
     city: "Dagupan City",
     barangay: "Pantal",
@@ -44,7 +99,7 @@ const initialDonors: Donor[] = [
     id: 2,
     name: "John Reyes",
     bloodType: "O+",
-    region: "Region I",
+    region: "Ilocos Region",
     province: "Pangasinan",
     city: "Calasiao",
     barangay: "Poblacion",
@@ -54,28 +109,53 @@ const initialDonors: Donor[] = [
     id: 3,
     name: "Angela Cruz",
     bloodType: "B+",
-    region: "Region I",
+    region: "Ilocos Region",
     province: "Pangasinan",
     city: "Mangaldan",
     barangay: "Guesang",
-    availability: "Available",
+    availability: "Not Available",
   },
 ];
 
+/*
+  Backend placeholder.
+
+  Purpose:
+  - Ready-to-connect function.
+  - Later, backend partner can replace this with fetch/axios API call.
+*/
+const addDonorToBackend = async (payload: DonorPayload) => {
+  console.log("Add donor payload ready for backend:", payload);
+
+  return {
+    success: true,
+  };
+};
+
 export default function FindDonorScreen() {
+  /*
+    Receives bloodType from Dashboard AI search.
+  */
   const params = useLocalSearchParams<{ bloodType?: string }>();
 
-  // Main data and filters
+  /*
+    Main states.
+  */
   const [donors, setDonors] = useState<Donor[]>(initialDonors);
   const [searchText, setSearchText] = useState("");
   const [selectedBloodType, setSelectedBloodType] = useState("");
 
-  // Modal controls
+  /*
+    Modal states.
+  */
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
 
-  // Add donor form states
-  const [form, setForm] = useState({
+  /*
+    Add donor form state.
+  */
+  const [form, setForm] = useState<DonorPayload>({
     name: "",
     bloodType: "",
     region: "",
@@ -85,21 +165,57 @@ export default function FindDonorScreen() {
     availability: "Available",
   });
 
-  // If user searched from Dashboard, auto-filter blood type here
+  /*
+    Auto-filter blood type when coming from Dashboard.
+  */
   useEffect(() => {
     if (params.bloodType) {
       setSelectedBloodType(String(params.bloodType).toUpperCase());
     }
   }, [params.bloodType]);
 
-  const updateForm = (key: keyof typeof form, value: string) => {
+  /*
+    Helper for updating add donor form.
+  */
+  const updateForm = (key: keyof DonorPayload, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const getFullLocation = (donor: Donor) => {
+  /*
+    Full location text.
+  */
+  const getFullLocation = (donor: Donor | DonorPayload) => {
     return `${donor.barangay}, ${donor.city}, ${donor.province}`;
   };
 
+  /*
+    Location picker display text.
+  */
+  const formLocationText =
+    form.region && form.province && form.city && form.barangay
+      ? `${form.region}, ${form.province}, ${form.city}, ${form.barangay}`
+      : "Region, Province, City, Barangay";
+
+  /*
+    Cascading location options.
+  */
+  const provinceOptions = form.region
+    ? Object.keys(locationData[form.region] || {})
+    : [];
+
+  const cityOptions =
+    form.region && form.province
+      ? Object.keys(locationData[form.region]?.[form.province] || {})
+      : [];
+
+  const barangayOptions =
+    form.region && form.province && form.city
+      ? locationData[form.region]?.[form.province]?.[form.city] || []
+      : [];
+
+  /*
+    Filtered donor list.
+  */
   const filteredDonors = useMemo(() => {
     const text = searchText.trim().toLowerCase();
 
@@ -111,14 +227,17 @@ export default function FindDonorScreen() {
         donor.bloodType.toLowerCase().includes(text) ||
         location.includes(text);
 
-      const matchesBlood = selectedBloodType
+      const matchesBloodType = selectedBloodType
         ? donor.bloodType === selectedBloodType
         : true;
 
-      return matchesSearch && matchesBlood;
+      return matchesSearch && matchesBloodType;
     });
   }, [donors, searchText, selectedBloodType]);
 
+  /*
+    Reset add donor form.
+  */
   const resetForm = () => {
     setForm({
       name: "",
@@ -131,34 +250,54 @@ export default function FindDonorScreen() {
     });
   };
 
-  const addDonor = () => {
-    const required =
-      form.name.trim() &&
-      form.bloodType &&
-      form.region.trim() &&
-      form.province.trim() &&
-      form.city.trim() &&
-      form.barangay.trim();
-
-    if (!required) {
+  /*
+    Add donor validation and submit.
+  */
+  const handleAddDonor = () => {
+    if (
+      !form.name.trim() ||
+      !form.bloodType ||
+      !form.region ||
+      !form.province ||
+      !form.city ||
+      !form.barangay
+    ) {
       Alert.alert("Missing details", "Please complete the donor information.");
       return;
     }
 
     Alert.alert("Post Donor?", "Are you sure you want to post this donor?", [
-      { text: "Cancel", style: "cancel" },
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
       {
         text: "Post",
-        onPress: () => {
-          const newDonor: Donor = {
-            id: Date.now(),
+        onPress: async () => {
+          const payload: DonorPayload = {
             name: form.name.trim(),
             bloodType: form.bloodType,
-            region: form.region.trim(),
-            province: form.province.trim(),
-            city: form.city.trim(),
-            barangay: form.barangay.trim(),
+            region: form.region,
+            province: form.province,
+            city: form.city,
+            barangay: form.barangay,
             availability: form.availability,
+          };
+
+          const response = await addDonorToBackend(payload);
+
+          if (!response.success) {
+            Alert.alert("Failed", "Unable to post donor.");
+            return;
+          }
+
+          /*
+            Add locally for front-end demo.
+            Later, this should refresh from backend.
+          */
+          const newDonor: Donor = {
+            id: Date.now(),
+            ...payload,
           };
 
           setDonors((current) => [newDonor, ...current]);
@@ -169,7 +308,18 @@ export default function FindDonorScreen() {
     ]);
   };
 
+  /*
+    Go to request screen with selected donor details.
+  */
   const goToRequest = (donor: Donor) => {
+    if (donor.availability !== "Available") {
+      Alert.alert(
+        "Donor not available",
+        "This donor is currently not available for requests."
+      );
+      return;
+    }
+
     setSelectedDonor(null);
 
     router.push({
@@ -188,24 +338,19 @@ export default function FindDonorScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Find Donor</Text>
-            <Text style={styles.subtitle}>Search available blood donors</Text>
-          </View>
+        {/* Reusable header */}
+        <ScreenHeader
+          title="Find Donor"
+          subtitle="Search available blood donors"
+        />
 
-          <TouchableOpacity style={styles.notifBtn}>
-            <Ionicons name="notifications-outline" size={24} color="#730000" />
-            <View style={styles.notifDot} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Search and add row */}
+        {/* Search and add donor row */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Ionicons name="search-outline" size={20} color="#777" />
+
             <TextInput
               style={styles.searchInput}
               placeholder="Find donor"
@@ -216,14 +361,15 @@ export default function FindDonorScreen() {
           </View>
 
           <TouchableOpacity
-            style={styles.addBtn}
+            style={styles.addButton}
+            activeOpacity={0.85}
             onPress={() => setShowAddModal(true)}
           >
             <Ionicons name="add" size={27} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
-        {/* Blood type filter */}
+        {/* Blood type filters */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -231,6 +377,7 @@ export default function FindDonorScreen() {
         >
           <TouchableOpacity
             style={[styles.chip, !selectedBloodType && styles.activeChip]}
+            activeOpacity={0.85}
             onPress={() => {
               setSelectedBloodType("");
               Keyboard.dismiss();
@@ -253,6 +400,7 @@ export default function FindDonorScreen() {
                 styles.chip,
                 selectedBloodType === type && styles.activeChip,
               ]}
+              activeOpacity={0.85}
               onPress={() => setSelectedBloodType(type)}
             >
               <Text
@@ -280,14 +428,10 @@ export default function FindDonorScreen() {
             activeOpacity={0.85}
             onPress={() => setSelectedDonor(donor)}
           >
-            {/* Profile image if available, blood type avatar if no image */}
-            <View style={styles.avatar}>
-              {donor.profileImage ? (
-                <Image source={donor.profileImage} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarText}>{donor.bloodType}</Text>
-              )}
-            </View>
+            <BloodTypeAvatar
+              bloodType={donor.bloodType}
+              image={donor.profileImage}
+            />
 
             <View style={styles.donorInfo}>
               <Text style={styles.donorName}>{donor.name}</Text>
@@ -297,18 +441,21 @@ export default function FindDonorScreen() {
                 {getFullLocation(donor)}
               </Text>
 
-              <Text style={styles.availability}>{donor.availability}</Text>
+              <StatusBadge status={donor.availability} />
             </View>
 
-            <Ionicons name="chevron-forward" size={22} color="#730000" />
+            <Ionicons name="chevron-forward" size={22} color={RED} />
           </TouchableOpacity>
         ))}
 
+        {/* Empty state */}
         {filteredDonors.length === 0 && (
           <View style={styles.emptyCard}>
-            <Ionicons name="search-outline" size={40} color="#730000" />
+            <Ionicons name="search-outline" size={40} color={RED} />
             <Text style={styles.emptyTitle}>No donor found</Text>
-            <Text style={styles.emptyText}>Try another blood type or location.</Text>
+            <Text style={styles.emptyText}>
+              Try another blood type or location.
+            </Text>
           </View>
         )}
 
@@ -316,7 +463,15 @@ export default function FindDonorScreen() {
       </ScrollView>
 
       {/* Add Donor Modal */}
-      <Modal visible={showAddModal} transparent animationType="slide">
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          resetForm();
+          setShowAddModal(false);
+        }}
+      >
         <View style={styles.overlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -328,7 +483,7 @@ export default function FindDonorScreen() {
                   setShowAddModal(false);
                 }}
               >
-                <Ionicons name="close" size={25} color="#730000" />
+                <Ionicons name="close" size={25} color={RED} />
               </TouchableOpacity>
             </View>
 
@@ -342,6 +497,7 @@ export default function FindDonorScreen() {
               />
 
               <Text style={styles.label}>Blood Type</Text>
+
               <View style={styles.wrap}>
                 {bloodTypes.map((type) => (
                   <TouchableOpacity
@@ -350,6 +506,7 @@ export default function FindDonorScreen() {
                       styles.formChip,
                       form.bloodType === type && styles.activeChip,
                     ]}
+                    activeOpacity={0.85}
                     onPress={() => updateForm("bloodType", type)}
                   >
                     <Text
@@ -366,63 +523,67 @@ export default function FindDonorScreen() {
 
               <Text style={styles.label}>Location</Text>
 
-              {/* Same idea as registration: Region, Province, City, Barangay */}
-              <TextInput
-                style={styles.input}
-                placeholder="Region"
-                placeholderTextColor="#999"
-                value={form.region}
-                onChangeText={(text) => updateForm("region", text)}
-              />
+              <TouchableOpacity
+                style={styles.locationPicker}
+                activeOpacity={0.85}
+                onPress={() => setShowLocationModal(true)}
+              >
+                <Text
+                  style={[
+                    styles.locationPickerText,
+                    form.region && styles.selectedLocationText,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {formLocationText}
+                </Text>
 
-              <TextInput
-                style={styles.input}
-                placeholder="Province"
-                placeholderTextColor="#999"
-                value={form.province}
-                onChangeText={(text) => updateForm("province", text)}
-              />
-
-              <TextInput
-                style={styles.input}
-                placeholder="City / Municipality"
-                placeholderTextColor="#999"
-                value={form.city}
-                onChangeText={(text) => updateForm("city", text)}
-              />
-
-              <TextInput
-                style={styles.input}
-                placeholder="Barangay"
-                placeholderTextColor="#999"
-                value={form.barangay}
-                onChangeText={(text) => updateForm("barangay", text)}
-              />
+                <Ionicons name="chevron-forward" size={20} color="#999" />
+              </TouchableOpacity>
 
               <Text style={styles.label}>Availability</Text>
+
               <View style={styles.wrap}>
-                {["Available", "Not Available"].map((status) => (
-                  <TouchableOpacity
-                    key={status}
-                    style={[
-                      styles.formChip,
-                      form.availability === status && styles.activeChip,
-                    ]}
-                    onPress={() => updateForm("availability", status)}
-                  >
-                    <Text
+                {availabilityOptions.map((status) => {
+                  const active = form.availability === status;
+                  const notAvailable = status === "Not Available";
+
+                  return (
+                    <TouchableOpacity
+                      key={status}
                       style={[
-                        styles.chipText,
-                        form.availability === status && styles.activeChipText,
+                        styles.formChip,
+                        active &&
+                          (notAvailable
+                            ? styles.activeNotAvailableChip
+                            : styles.activeChip),
                       ]}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        updateForm(
+                          "availability",
+                          status as Donor["availability"]
+                        )
+                      }
                     >
-                      {status}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        style={[
+                          styles.chipText,
+                          active && styles.activeChipText,
+                        ]}
+                      >
+                        {status}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
-              <TouchableOpacity style={styles.postBtn} onPress={addDonor}>
+              <TouchableOpacity
+                style={styles.postButton}
+                activeOpacity={0.85}
+                onPress={handleAddDonor}
+              >
                 <Text style={styles.postText}>POST DONOR</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -430,24 +591,140 @@ export default function FindDonorScreen() {
         </View>
       </Modal>
 
+      {/* Location Picker Modal */}
+      <Modal
+        visible={showLocationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLocationModal(false)}
+      >
+        <View style={styles.overlayCenter}>
+          <View style={styles.locationModalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Location</Text>
+
+              <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.locationLabel}>Region</Text>
+              <View style={styles.wrap}>
+                {Object.keys(locationData).map((region) => (
+                  <LocationChip
+                    key={region}
+                    label={region}
+                    active={form.region === region}
+                    onPress={() => {
+                      updateForm("region", region);
+                      updateForm("province", "");
+                      updateForm("city", "");
+                      updateForm("barangay", "");
+                    }}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.locationLabel}>Province</Text>
+              <View style={styles.wrap}>
+                {provinceOptions.length > 0 ? (
+                  provinceOptions.map((province) => (
+                    <LocationChip
+                      key={province}
+                      label={province}
+                      active={form.province === province}
+                      onPress={() => {
+                        updateForm("province", province);
+                        updateForm("city", "");
+                        updateForm("barangay", "");
+                      }}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.helperText}>Select region first</Text>
+                )}
+              </View>
+
+              <Text style={styles.locationLabel}>City / Municipality</Text>
+              <View style={styles.wrap}>
+                {cityOptions.length > 0 ? (
+                  cityOptions.map((city) => (
+                    <LocationChip
+                      key={city}
+                      label={city}
+                      active={form.city === city}
+                      onPress={() => {
+                        updateForm("city", city);
+                        updateForm("barangay", "");
+                      }}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.helperText}>Select province first</Text>
+                )}
+              </View>
+
+              <Text style={styles.locationLabel}>Barangay</Text>
+              <View style={styles.wrap}>
+                {barangayOptions.length > 0 ? (
+                  barangayOptions.map((barangay) => (
+                    <LocationChip
+                      key={barangay}
+                      label={barangay}
+                      active={form.barangay === barangay}
+                      onPress={() => updateForm("barangay", barangay)}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.helperText}>Select city first</Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.doneButton}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (
+                    !form.region ||
+                    !form.province ||
+                    !form.city ||
+                    !form.barangay
+                  ) {
+                    Alert.alert(
+                      "Incomplete location",
+                      "Please select region, province, city, and barangay."
+                    );
+                    return;
+                  }
+
+                  setShowLocationModal(false);
+                }}
+              >
+                <Text style={styles.doneText}>Done</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* View Donor Modal */}
-      <Modal visible={!!selectedDonor} transparent animationType="fade">
+      <Modal
+        visible={!!selectedDonor}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedDonor(null)}
+      >
         <View style={styles.overlayCenter}>
           <View style={styles.viewCard}>
             {selectedDonor && (
               <>
-                <View style={styles.viewAvatar}>
-                  {selectedDonor.profileImage ? (
-                    <Image
-                      source={selectedDonor.profileImage}
-                      style={styles.viewAvatarImage}
-                    />
-                  ) : (
-                    <Text style={styles.viewAvatarText}>
-                      {selectedDonor.bloodType}
-                    </Text>
-                  )}
-                </View>
+                <BloodTypeAvatar
+                  bloodType={selectedDonor.bloodType}
+                  image={selectedDonor.profileImage}
+                  size={82}
+                  fontSize={22}
+                />
 
                 <Text style={styles.viewName}>{selectedDonor.name}</Text>
 
@@ -467,13 +744,16 @@ export default function FindDonorScreen() {
 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Availability</Text>
-                  <Text style={styles.detailValue}>
-                    {selectedDonor.availability}
-                  </Text>
+                  <StatusBadge status={selectedDonor.availability} />
                 </View>
 
                 <TouchableOpacity
-                  style={styles.requestBtn}
+                  style={[
+                    styles.requestButton,
+                    selectedDonor.availability !== "Available" &&
+                      styles.disabledButton,
+                  ]}
+                  activeOpacity={0.85}
                   onPress={() => goToRequest(selectedDonor)}
                 >
                   <Text style={styles.requestText}>REQUEST</Text>
@@ -491,37 +771,57 @@ export default function FindDonorScreen() {
   );
 }
 
-const RED = "#730000";
+/*
+  Local reusable chip for location picker.
+
+  Purpose:
+  - Used only inside Find Donor location modal.
+  - If used in other screens, we can move it to components later.
+*/
+function LocationChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.locationChip, active && styles.activeLocationChip]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <Text
+        style={[
+          styles.locationChipText,
+          active && styles.activeLocationChipText,
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF" },
-  content: { paddingTop: 55, paddingHorizontal: 20 },
-  header: {
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+
+  content: {
+    paddingTop: 55,
+    paddingHorizontal: 20,
+  },
+
+  searchRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 22,
+    marginBottom: 13,
   },
-  title: { fontSize: 30, fontWeight: "900", color: RED },
-  subtitle: { marginTop: 4, fontSize: 13, color: "#777" },
-  notifBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#FFF1F1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  notifDot: {
-    position: "absolute",
-    top: 13,
-    right: 14,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#E60000",
-  },
-  searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 13 },
+
   searchBox: {
     flex: 1,
     height: 52,
@@ -532,8 +832,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     marginRight: 9,
   },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: "#333" },
-  addBtn: {
+
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 15,
+    color: "#333",
+  },
+
+  addButton: {
     width: 52,
     height: 52,
     borderRadius: 20,
@@ -541,7 +848,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  filterScroll: { marginBottom: 10 },
+
+  filterScroll: {
+    marginBottom: 10,
+  },
+
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -551,10 +862,33 @@ const styles = StyleSheet.create({
     borderColor: "#FFD6D6",
     marginRight: 8,
   },
-  activeChip: { backgroundColor: RED, borderColor: RED },
-  chipText: { color: RED, fontWeight: "800", fontSize: 13 },
-  activeChipText: { color: "#FFFFFF" },
-  resultText: { color: "#777", fontWeight: "700", marginBottom: 12 },
+
+  activeChip: {
+    backgroundColor: RED,
+    borderColor: RED,
+  },
+
+  activeNotAvailableChip: {
+    backgroundColor: "#B00000",
+    borderColor: "#B00000",
+  },
+
+  chipText: {
+    color: RED,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+
+  activeChipText: {
+    color: "#FFFFFF",
+  },
+
+  resultText: {
+    color: "#777",
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+
   donorCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -565,22 +899,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FFE1E1",
   },
-  avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: RED,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-    overflow: "hidden",
+
+  donorInfo: {
+    flex: 1,
+    marginLeft: 12,
   },
-  avatarImage: { width: "100%", height: "100%" },
-  avatarText: { color: "#FFFFFF", fontWeight: "900", fontSize: 17 },
-  donorInfo: { flex: 1 },
-  donorName: { fontSize: 16, fontWeight: "900", color: "#222" },
-  donorLocation: { marginTop: 5, color: "#777", fontSize: 13 },
-  availability: { marginTop: 6, color: "#178A3B", fontWeight: "800" },
+
+  donorName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#222",
+  },
+
+  donorLocation: {
+    marginTop: 5,
+    color: "#777",
+    fontSize: 13,
+  },
+
   emptyCard: {
     alignItems: "center",
     backgroundColor: "#FFF7F7",
@@ -588,21 +924,37 @@ const styles = StyleSheet.create({
     padding: 25,
     marginTop: 20,
   },
-  emptyTitle: { marginTop: 10, fontSize: 18, fontWeight: "900", color: RED },
-  emptyText: { marginTop: 5, color: "#777", textAlign: "center" },
-  bottomSpace: { height: 120 },
+
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: "900",
+    color: RED,
+  },
+
+  emptyText: {
+    marginTop: 5,
+    color: "#777",
+    textAlign: "center",
+  },
+
+  bottomSpace: {
+    height: 120,
+  },
 
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     justifyContent: "flex-end",
   },
+
   overlayCenter: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     justifyContent: "center",
     padding: 22,
   },
+
   modalCard: {
     maxHeight: "86%",
     backgroundColor: "#FFFFFF",
@@ -610,13 +962,27 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 22,
   },
+
+  locationModalCard: {
+    maxHeight: "85%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 22,
+  },
+
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 15,
   },
-  modalTitle: { fontSize: 24, fontWeight: "900", color: RED },
+
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: RED,
+  },
+
   input: {
     height: 52,
     borderRadius: 18,
@@ -626,8 +992,19 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 12,
   },
-  label: { color: RED, fontWeight: "900", marginBottom: 10 },
-  wrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 10 },
+
+  label: {
+    color: RED,
+    fontWeight: "900",
+    marginBottom: 10,
+  },
+
+  wrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+
   formChip: {
     paddingVertical: 8,
     paddingHorizontal: 13,
@@ -638,7 +1015,29 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginBottom: 8,
   },
-  postBtn: {
+
+  locationPicker: {
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#F4F4F4",
+    paddingHorizontal: 15,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  locationPickerText: {
+    flex: 1,
+    color: "#999",
+    fontSize: 15,
+  },
+
+  selectedLocationText: {
+    color: "#333",
+    fontWeight: "600",
+  },
+
+  postButton: {
     height: 54,
     borderRadius: 22,
     backgroundColor: RED,
@@ -646,7 +1045,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 5,
   },
-  postText: { color: "#FFFFFF", fontWeight: "900", fontSize: 16 },
+
+  postText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 16,
+  },
 
   viewCard: {
     backgroundColor: "#FFFFFF",
@@ -654,19 +1058,15 @@ const styles = StyleSheet.create({
     padding: 22,
     alignItems: "center",
   },
-  viewAvatar: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
-    backgroundColor: RED,
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-    marginBottom: 12,
+
+  viewName: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#222",
+    marginTop: 12,
+    marginBottom: 15,
   },
-  viewAvatarImage: { width: "100%", height: "100%" },
-  viewAvatarText: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  viewName: { fontSize: 22, fontWeight: "900", color: "#222", marginBottom: 15 },
+
   detailRow: {
     width: "100%",
     backgroundColor: "#FFF7F7",
@@ -674,9 +1074,20 @@ const styles = StyleSheet.create({
     padding: 13,
     marginBottom: 9,
   },
-  detailLabel: { color: RED, fontWeight: "900", fontSize: 13 },
-  detailValue: { color: "#555", marginTop: 4, fontSize: 14 },
-  requestBtn: {
+
+  detailLabel: {
+    color: RED,
+    fontWeight: "900",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+
+  detailValue: {
+    color: "#555",
+    fontSize: 14,
+  },
+
+  requestButton: {
     width: "100%",
     height: 52,
     borderRadius: 20,
@@ -685,6 +1096,76 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  requestText: { color: "#FFFFFF", fontWeight: "900", fontSize: 16 },
-  closeText: { marginTop: 13, color: RED, fontWeight: "800" },
+
+  disabledButton: {
+    opacity: 0.45,
+  },
+
+  requestText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+
+  closeText: {
+    marginTop: 13,
+    color: RED,
+    fontWeight: "900",
+  },
+
+  locationLabel: {
+    color: RED,
+    fontSize: 15,
+    fontWeight: "900",
+    marginBottom: 8,
+    marginTop: 6,
+  },
+
+  locationChip: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: "#FFF7F7",
+    borderWidth: 1,
+    borderColor: "#FFD6D6",
+    marginRight: 8,
+    marginBottom: 8,
+  },
+
+  activeLocationChip: {
+    backgroundColor: RED,
+    borderColor: RED,
+  },
+
+  locationChipText: {
+    color: RED,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  activeLocationChipText: {
+    color: "#FFFFFF",
+  },
+
+  helperText: {
+    color: "#999",
+    fontSize: 13,
+    marginBottom: 8,
+  },
+
+  doneButton: {
+    backgroundColor: RED,
+    height: 52,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 5,
+    marginBottom: 5,
+  },
+
+  doneText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
 });

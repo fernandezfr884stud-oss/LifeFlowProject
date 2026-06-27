@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   ScrollView,
@@ -11,15 +12,27 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import ScreenHeader from "../../components/ScreenHeader";
 
 const RED = "#730000";
 
 const urgencyLevels = ["Low", "Moderate", "Urgent", "Emergency"];
 
 /*
-  This is the type for a submitted blood request.
-  For now, this is front-end only.
-  Later, this will come from the backend/database.
+  Blood request status.
+
+  Purpose:
+  - Pending means waiting for donor response.
+  - Accepted/Rejected will be updated by backend later.
+*/
+type RequestStatus = "Pending" | "Accepted" | "Rejected";
+
+/*
+  This is the submitted request shown in the Request tab.
+
+  Purpose:
+  - Front-end display muna.
+  - Later, this will come from backend/database.
 */
 type BloodRequest = {
   id: number;
@@ -31,12 +44,54 @@ type BloodRequest = {
   urgencyLevel: string;
   reason: string;
   hospitalName: string;
-  status: "Pending" | "Accepted" | "Rejected";
+  status: RequestStatus;
+};
+
+/*
+  Backend-ready request payload.
+
+  Purpose:
+  - Ito yung structure na ipapasa sa backend later.
+  - Backend partner can follow this format.
+*/
+type RequestPayload = {
+  donorName: string;
+  patientName: string;
+  contactNumber: string;
+  location: string;
+  bloodTypeNeeded: string;
+  urgencyLevel: string;
+  reason: string;
+  hospitalName: string;
+  proofUploaded: boolean;
+  documentUploaded: boolean;
+};
+
+/*
+  Backend placeholder.
+
+  Purpose:
+  - Ready-to-connect function.
+  - Later, papalitan ito ng real API call using fetch/axios.
+*/
+const submitBloodRequestToBackend = async (payload: RequestPayload) => {
+  console.log("Blood request payload ready for backend:", payload);
+
+  /*
+    Temporary success response for front-end demo.
+  */
+  return {
+    success: true,
+  };
 };
 
 export default function RequestScreen() {
   /*
-    These params come from Find Donor after clicking REQUEST.
+    Params from Find Donor.
+
+    Purpose:
+    - If user clicks REQUEST from Find Donor,
+      the selected donor details will be passed here.
   */
   const params = useLocalSearchParams<{
     requestKey?: string;
@@ -46,20 +101,43 @@ export default function RequestScreen() {
   }>();
 
   /*
-    submittedRequests stores the request cards shown in the Request tab.
-    showForm controls if the form should appear.
+    Request list state.
+
+    Purpose:
+    - Stores submitted requests in front-end only.
+    - Later, this will be fetched from backend.
   */
   const [submittedRequests, setSubmittedRequests] = useState<BloodRequest[]>([]);
+
+  /*
+    Form visibility state.
+
+    Purpose:
+    - If false, show "No requests yet" or request cards.
+    - If true, show request form.
+  */
   const [showForm, setShowForm] = useState(false);
 
   /*
-    This prevents the form from reopening again after submitting
-    while the same route params are still present.
+    Submit loading state.
+
+    Purpose:
+    - Prevents repeated submit clicks.
+    - Shows loading spinner while submitting.
+  */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /*
+    Prevents the same request params from reopening the form again
+    after the user already submitted or cancelled.
   */
   const lastRequestKey = useRef("");
 
   /*
-    Request form data.
+    Request form state.
+
+    Purpose:
+    - Stores the seeker/patient request details.
   */
   const [form, setForm] = useState({
     patientName: "",
@@ -73,28 +151,28 @@ export default function RequestScreen() {
 
   /*
     Temporary upload states.
-    These are only UI placeholders for now.
-    Later, your backend partner can connect real upload.
+
+    Purpose:
+    - Front-end placeholder muna.
+    - Later, backend partner can connect real file upload.
   */
   const [proofUploaded, setProofUploaded] = useState(false);
   const [documentUploaded, setDocumentUploaded] = useState(false);
 
   /*
-    When user comes from Find Donor, open the form automatically
-    and auto-fill blood type/location.
+    Opens the request form when coming from Find Donor.
+
+    Important:
+    - Blood type is fixed from selected donor.
+    - Location is empty because seeker/patient should fill it.
   */
-    useEffect(() => {
+  useEffect(() => {
     const key = String(params.requestKey || params.donorName || "");
 
     if (key && key !== lastRequestKey.current) {
       lastRequestKey.current = key;
-
       setShowForm(true);
 
-      /*
-        Blood type is auto-filled from the selected donor.
-        Location is left empty because the seeker/patient should fill it out.
-      */
       setForm((current) => ({
         ...current,
         bloodTypeNeeded: String(params.bloodType || ""),
@@ -104,7 +182,7 @@ export default function RequestScreen() {
   }, [params.requestKey, params.donorName, params.bloodType]);
 
   /*
-    Helper function para hindi paulit-ulit ang setForm.
+    Helper function for updating one form field.
   */
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -129,23 +207,29 @@ export default function RequestScreen() {
   };
 
   /*
-    Submit request.
-    This will validate the form, ask confirmation,
-    then add the request to the pending list.
-  */
-  const submitRequest = () => {
-    const isComplete =
-      form.patientName.trim() &&
-      form.contactNumber.trim() &&
-      form.location.trim() &&
-      form.bloodTypeNeeded.trim() &&
-      form.urgencyLevel &&
-      form.reason.trim() &&
-      form.hospitalName.trim();
+    Front-end validation.
 
-    if (!isComplete) {
+    Purpose:
+    - Prevents empty/invalid request before sending to backend.
+    - Backend should still validate again later.
+  */
+  const validateRequest = () => {
+    if (
+      !form.patientName.trim() ||
+      !form.contactNumber.trim() ||
+      !form.location.trim() ||
+      !form.bloodTypeNeeded.trim() ||
+      !form.urgencyLevel ||
+      !form.reason.trim() ||
+      !form.hospitalName.trim()
+    ) {
       Alert.alert("Missing details", "Please complete all required fields.");
-      return;
+      return false;
+    }
+
+    if (form.contactNumber.trim().length < 10) {
+      Alert.alert("Invalid contact number", "Please enter a valid contact number.");
+      return false;
     }
 
     if (!proofUploaded || !documentUploaded) {
@@ -153,8 +237,23 @@ export default function RequestScreen() {
         "Missing proof",
         "Please upload the hospital proof and supporting document."
       );
-      return;
+      return false;
     }
+
+    return true;
+  };
+
+  /*
+    Submit request.
+
+    Purpose:
+    - Validate form.
+    - Ask confirmation.
+    - Build backend-ready payload.
+    - Add request as Pending in request list.
+  */
+  const submitRequest = () => {
+    if (!validateRequest()) return;
 
     Keyboard.dismiss();
 
@@ -162,12 +261,14 @@ export default function RequestScreen() {
       "Submit Blood Request?",
       "Are you sure you want to submit this blood request?",
       [
-        { text: "Cancel", style: "cancel" },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
         {
           text: "Submit",
-          onPress: () => {
-            const newRequest: BloodRequest = {
-              id: Date.now(),
+          onPress: async () => {
+            const payload: RequestPayload = {
               donorName: String(params.donorName || "Selected Donor"),
               patientName: form.patientName.trim(),
               contactNumber: form.contactNumber.trim(),
@@ -176,21 +277,48 @@ export default function RequestScreen() {
               urgencyLevel: form.urgencyLevel,
               reason: form.reason.trim(),
               hospitalName: form.hospitalName.trim(),
-              status: "Pending",
+              proofUploaded,
+              documentUploaded,
             };
 
-            /*
-              Add new request on top of the request list.
-            */
-            setSubmittedRequests((current) => [newRequest, ...current]);
+            try {
+              setIsSubmitting(true);
 
-            resetForm();
-            setShowForm(false);
+              const response = await submitBloodRequestToBackend(payload);
 
-            Alert.alert(
-              "Request Submitted",
-              "Your request is now pending."
-            );
+              if (!response.success) {
+                Alert.alert("Failed", "Unable to submit request.");
+                return;
+              }
+
+              /*
+                Add locally for front-end demo.
+                Later, request list should refresh from backend.
+              */
+              const newRequest: BloodRequest = {
+                id: Date.now(),
+                donorName: payload.donorName,
+                patientName: payload.patientName,
+                contactNumber: payload.contactNumber,
+                location: payload.location,
+                bloodTypeNeeded: payload.bloodTypeNeeded,
+                urgencyLevel: payload.urgencyLevel,
+                reason: payload.reason,
+                hospitalName: payload.hospitalName,
+                status: "Pending",
+              };
+
+              setSubmittedRequests((current) => [newRequest, ...current]);
+
+              resetForm();
+              setShowForm(false);
+
+              Alert.alert("Request Submitted", "Your request is now pending.");
+            } catch (error) {
+              Alert.alert("Something went wrong", "Unable to submit request.");
+            } finally {
+              setIsSubmitting(false);
+            }
           },
         },
       ]
@@ -202,29 +330,25 @@ export default function RequestScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Requests</Text>
-          <Text style={styles.subtitle}>
-            Track your blood request status here.
-          </Text>
-        </View>
+      {/* Reusable header */}
+      <ScreenHeader
+        title="Requests"
+        subtitle="Track your blood request status here"
+      />
 
-        <TouchableOpacity style={styles.notifBtn}>
-          <Ionicons name="notifications-outline" size={24} color={RED} />
-          <View style={styles.notifDot} />
-        </TouchableOpacity>
-      </View>
-
-      {/* FORM VIEW: appears only after clicking Request from Find Donor */}
       {showForm ? (
+        /*
+          Form view.
+          This appears after user clicks REQUEST from Find Donor.
+        */
         <View>
           <View style={styles.formHeader}>
             <Text style={styles.sectionTitle}>Blood Request Form</Text>
 
             <TouchableOpacity
+              activeOpacity={0.85}
               onPress={() => {
                 resetForm();
                 setShowForm(false);
@@ -234,15 +358,17 @@ export default function RequestScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Selected donor details */}
           {params.donorName && (
             <View style={styles.donorBox}>
               <Text style={styles.boxLabel}>Selected Donor</Text>
               <Text style={styles.donorName}>{params.donorName}</Text>
               <Text style={styles.boxText}>Blood Type: {params.bloodType}</Text>
-              <Text style={styles.boxText}>Location: {params.location}</Text>
+              <Text style={styles.boxText}>Donor Location: {params.location}</Text>
             </View>
           )}
 
+          {/* Patient details */}
           <Text style={styles.sectionTitle}>Patient Details</Text>
 
           <TextInput
@@ -270,6 +396,7 @@ export default function RequestScreen() {
             onChangeText={(text) => updateForm("location", text)}
           />
 
+          {/* Fixed blood type from selected donor */}
           <TextInput
             style={[styles.input, styles.disabledInput]}
             placeholder="Blood type needed"
@@ -279,6 +406,7 @@ export default function RequestScreen() {
             editable={false}
           />
 
+          {/* Urgency level */}
           <Text style={styles.sectionTitle}>Urgency Level</Text>
 
           <View style={styles.chipContainer}>
@@ -289,6 +417,7 @@ export default function RequestScreen() {
                   styles.urgencyChip,
                   form.urgencyLevel === level && styles.activeChip,
                 ]}
+                activeOpacity={0.85}
                 onPress={() => updateForm("urgencyLevel", level)}
               >
                 <Text
@@ -303,6 +432,7 @@ export default function RequestScreen() {
             ))}
           </View>
 
+          {/* Hospital details */}
           <Text style={styles.sectionTitle}>Hospital Details</Text>
 
           <TextInput
@@ -322,66 +452,54 @@ export default function RequestScreen() {
             onChangeText={(text) => updateForm("reason", text)}
           />
 
+          {/* Proof upload placeholders */}
           <Text style={styles.sectionTitle}>Proof Documents</Text>
 
-          <TouchableOpacity
-            style={styles.uploadBox}
+          <UploadBox
+            uploaded={proofUploaded}
+            icon={proofUploaded ? "checkmark-circle" : "cloud-upload-outline"}
+            title="Doctor / hospital request proof"
+            subtitle={proofUploaded ? "Proof uploaded" : "Tap to upload proof"}
             onPress={() => setProofUploaded(true)}
-          >
-            <Ionicons
-              name={proofUploaded ? "checkmark-circle" : "cloud-upload-outline"}
-              size={24}
-              color={proofUploaded ? "#178A3B" : RED}
-            />
+          />
 
-            <View style={styles.uploadTextBox}>
-              <Text style={styles.uploadTitle}>
-                Doctor / hospital request proof
-              </Text>
-              <Text style={styles.uploadSubtitle}>
-                {proofUploaded ? "Proof uploaded" : "Tap to upload proof"}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.uploadBox}
+          <UploadBox
+            uploaded={documentUploaded}
+            icon={documentUploaded ? "checkmark-circle" : "document-attach-outline"}
+            title="Supporting document"
+            subtitle="Valid ID, hospital document, official receipt, or blood request slip"
             onPress={() => setDocumentUploaded(true)}
+          />
+
+          {/* Submit button */}
+          <TouchableOpacity
+            style={[styles.submitBtn, isSubmitting && styles.disabledButton]}
+            activeOpacity={0.85}
+            onPress={submitRequest}
+            disabled={isSubmitting}
           >
-            <Ionicons
-              name={
-                documentUploaded
-                  ? "checkmark-circle"
-                  : "document-attach-outline"
-              }
-              size={24}
-              color={documentUploaded ? "#178A3B" : RED}
-            />
-
-            <View style={styles.uploadTextBox}>
-              <Text style={styles.uploadTitle}>Supporting document</Text>
-              <Text style={styles.uploadSubtitle}>
-                Valid ID, hospital document, official receipt, or blood request
-                slip
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.submitBtn} onPress={submitRequest}>
-            <Ionicons name="send" size={19} color="#FFFFFF" />
-            <Text style={styles.submitText}>SUBMIT REQUEST</Text>
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="send" size={19} color="#FFFFFF" />
+                <Text style={styles.submitText}>SUBMIT REQUEST</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       ) : (
         /*
-          REQUEST LIST VIEW:
-          This is what appears when user opens the Request tab normally.
+          Request list view.
+          This appears when user opens Request tab normally.
         */
         <View>
           {submittedRequests.length === 0 ? (
             <View style={styles.emptyCard}>
               <Ionicons name="document-text-outline" size={48} color={RED} />
+
               <Text style={styles.emptyTitle}>No requests yet</Text>
+
               <Text style={styles.emptyText}>
                 When you request a blood donor, your pending requests will appear
                 here.
@@ -391,45 +509,35 @@ export default function RequestScreen() {
             submittedRequests.map((request) => (
               <View key={request.id} style={styles.requestCard}>
                 <View style={styles.requestTop}>
-                  <View>
+                  <View style={styles.requestTitleBox}>
                     <Text style={styles.requestTitle}>
                       {request.bloodTypeNeeded} Blood Request
                     </Text>
+
                     <Text style={styles.requestSub}>
                       Donor: {request.donorName}
                     </Text>
                   </View>
 
-                  <View style={styles.pendingBadge}>
-                    <Text style={styles.pendingText}>{request.status}</Text>
-                  </View>
+                  <RequestStatusBadge status={request.status} />
                 </View>
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="person-outline" size={16} color="#777" />
-                  <Text style={styles.detailText}>
-                    Patient: {request.patientName}
-                  </Text>
-                </View>
+                <DetailItem
+                  icon="person-outline"
+                  text={`Patient: ${request.patientName}`}
+                />
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="business-outline" size={16} color="#777" />
-                  <Text style={styles.detailText}>
-                    Hospital: {request.hospitalName}
-                  </Text>
-                </View>
+                <DetailItem
+                  icon="business-outline"
+                  text={`Hospital: ${request.hospitalName}`}
+                />
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="location-outline" size={16} color="#777" />
-                  <Text style={styles.detailText}>{request.location}</Text>
-                </View>
+                <DetailItem icon="location-outline" text={request.location} />
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="alert-circle-outline" size={16} color="#777" />
-                  <Text style={styles.detailText}>
-                    Urgency: {request.urgencyLevel}
-                  </Text>
-                </View>
+                <DetailItem
+                  icon="alert-circle-outline"
+                  text={`Urgency: ${request.urgencyLevel}`}
+                />
 
                 <Text style={styles.pendingNote}>
                   Waiting for donor response.
@@ -443,63 +551,105 @@ export default function RequestScreen() {
   );
 }
 
+/*
+  Local reusable UploadBox.
+
+  Purpose:
+  - Used for proof document upload UI.
+  - Later, this can be connected to real file upload.
+*/
+function UploadBox({
+  uploaded,
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  uploaded: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.uploadBox} activeOpacity={0.85} onPress={onPress}>
+      <Ionicons
+        name={icon}
+        size={24}
+        color={uploaded ? "#178A3B" : RED}
+      />
+
+      <View style={styles.uploadTextBox}>
+        <Text style={styles.uploadTitle}>{title}</Text>
+        <Text style={styles.uploadSubtitle}>{subtitle}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/*
+  Local reusable request status badge.
+
+  Purpose:
+  - Shows Pending / Accepted / Rejected status.
+  - Later, can be moved to components if used in other screens.
+*/
+function RequestStatusBadge({ status }: { status: RequestStatus }) {
+  const statusStyle = {
+    Pending: {
+      bg: "#FFF0C2",
+      text: "#A36A00",
+    },
+    Accepted: {
+      bg: "#EAF8EF",
+      text: "#178A3B",
+    },
+    Rejected: {
+      bg: "#FFECEC",
+      text: "#B00000",
+    },
+  }[status];
+
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+      <Text style={[styles.statusText, { color: statusStyle.text }]}>
+        {status}
+      </Text>
+    </View>
+  );
+}
+
+/*
+  Local reusable detail item.
+
+  Purpose:
+  - Keeps request card details cleaner.
+*/
+function DetailItem({
+  icon,
+  text,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Ionicons name={icon} size={16} color="#777" />
+      <Text style={styles.detailText}>{text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
 
-  disabledInput: {
-    backgroundColor: "#EFEFEF",
-    color: "#777",
-  },
-
   content: {
     paddingTop: 55,
     paddingHorizontal: 20,
-
-    /*
-      Extra bottom padding para hindi matakpan ng bottom navigation.
-    */
     paddingBottom: 140,
-  },
-
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 22,
-  },
-
-  title: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: RED,
-  },
-
-  subtitle: {
-    color: "#777",
-    marginTop: 5,
-    lineHeight: 20,
-  },
-
-  notifBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#FFF1F1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  notifDot: {
-    position: "absolute",
-    top: 13,
-    right: 14,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#E60000",
   },
 
   formHeader: {
@@ -515,9 +665,9 @@ const styles = StyleSheet.create({
 
   donorBox: {
     backgroundColor: "#FFF7F7",
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 18,
+    borderRadius: 20,
+    padding: 13,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: "#FFE1E1",
   },
@@ -557,6 +707,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+  disabledInput: {
+    backgroundColor: "#EFEFEF",
+    color: "#777",
+  },
+
   bigInput: {
     height: 115,
     borderRadius: 18,
@@ -576,12 +731,12 @@ const styles = StyleSheet.create({
 
   urgencyChip: {
     paddingVertical: 9,
-    paddingHorizontal: 14,
+    paddingHorizontal: 13,
     borderRadius: 18,
     backgroundColor: "#FFF7F7",
     borderWidth: 1,
     borderColor: "#FFD6D6",
-    marginRight: 8,
+    marginRight: 7,
     marginBottom: 8,
   },
 
@@ -630,14 +785,19 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  submitBtn: {
-    height: 54,
-    borderRadius: 22,
-    backgroundColor: RED,
-    justifyContent: "center",
-    alignItems: "center",
-    flexDirection: "row",
-    marginTop: 8,
+    submitBtn: {
+      height: 54,
+      borderRadius: 22,
+      backgroundColor: RED,
+      justifyContent: "center",
+      alignItems: "center",
+      flexDirection: "row",
+      marginTop: 6,
+      marginBottom: 8,
+    },
+
+  disabledButton: {
+    opacity: 0.7,
   },
 
   submitText: {
@@ -686,6 +846,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+  requestTitleBox: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
   requestTitle: {
     fontSize: 17,
     fontWeight: "900",
@@ -698,16 +863,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  pendingBadge: {
-    backgroundColor: "#FFF0C2",
+  statusBadge: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 14,
     alignSelf: "flex-start",
   },
 
-  pendingText: {
-    color: "#A36A00",
+  statusText: {
     fontWeight: "900",
     fontSize: 12,
   },

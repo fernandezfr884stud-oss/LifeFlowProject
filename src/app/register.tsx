@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import PasswordField from "../components/PasswordField";
 
 const RED = "#730000";
 
@@ -18,8 +19,11 @@ const genderOptions = ["Male", "Female", "Other"];
 const bloodTypeOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
 /*
-  Temporary location data for front-end demo.
-  Later, backend can provide this list from database/API.
+  Temporary location data.
+
+  Purpose:
+  - Front-end demo muna habang wala pang backend.
+  - Later, backend can provide full location list from database/API.
 */
 const locationData: Record<string, Record<string, Record<string, string[]>>> = {
   "Ilocos Region": {
@@ -42,35 +46,34 @@ const locationData: Record<string, Record<string, Record<string, string[]>>> = {
 };
 
 /*
-  This is the final register data format.
-  Backend partner can follow this structure.
+  Backend-ready register payload.
+
+  Purpose:
+  - Ito yung data format na ipapasa sa backend later.
+  - Backend partner can follow this structure.
 */
-    type RegisterPayload = {
-      firstName: string;
-      middleInitial: string;
-      lastName: string;
-      email: string;
-      phoneNumber: string;
-      gender: string;
-      bloodType: string;
-      region: string;
-      province: string;
-      city: string;
-      barangay: string;
-      password: string;
-      acceptedTerms: boolean;
-    };
+type RegisterPayload = {
+  firstName: string;
+  middleInitial: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  gender: string;
+  bloodType: string;
+  region: string;
+  province: string;
+  city: string;
+  barangay: string;
+  password: string;
+  acceptedTerms: boolean;
+};
 
 /*
-  BACKEND PLACEHOLDER:
-  Later, your backend partner will replace this with real API/database request.
+  Backend placeholder.
 
-  Example later:
-  await fetch("https://your-api.com/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  Purpose:
+  - Ready-to-connect function.
+  - Later, papalitan ito ng real API call using fetch or axios.
 */
 const registerUser = async (payload: RegisterPayload) => {
   console.log("Register payload ready for backend:", payload);
@@ -86,165 +89,243 @@ const registerUser = async (payload: RegisterPayload) => {
 export default function RegisterScreen() {
   const router = useRouter();
 
+  /*
+    Loading state.
+
+    Purpose:
+    - Prevents repeated Sign Up clicks.
+    - Shows loading spinner while submitting.
+  */
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /*
+    Terms checkbox state.
+
+    Purpose:
+    - User must agree before registration.
+  */
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   /*
-    Register form data.
-    Later, backend will save these values to database.
+    Terms modal state.
+
+    Purpose:
+    - Opens/closes the Terms and Conditions popup.
   */
-        const [form, setForm] = useState({
-          firstName: "",
-          middleInitial: "",
-          lastName: "",
-          email: "",
-          phoneNumber: "",
-          gender: "",
-          bloodType: "",
-          region: "",
-          province: "",
-          city: "",
-          barangay: "",
-          password: "",
-          confirmPassword: "",
-        });
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
-        /*
-          Modal controls.
-        */
-        const [showGenderModal, setShowGenderModal] = useState(false);
-        const [showBloodTypeModal, setShowBloodTypeModal] = useState(false);
-        const [showLocationModal, setShowLocationModal] = useState(false);
+  /*
+    Password visibility states.
 
-        /*
-          Helper for updating one form field.
-        */
-        const updateForm = (key: keyof typeof form, value: string) => {
-          setForm((current) => ({ ...current, [key]: value }));
-        };
+    Purpose:
+    - Controls eye icon show/hide password.
+  */
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-        const fullName = `${form.firstName} ${form.middleInitial} ${form.lastName}`
-          .replace(/\s+/g, " ")
-          .trim();
+  /*
+    Register form state.
 
-        const locationText =
-          form.region && form.province && form.city && form.barangay
-            ? `${form.region}, ${form.province}, ${form.city}, ${form.barangay}`
-            : "Region, Province, City, Barangay";
+    Purpose:
+    - Stores all user inputs before sending to backend.
+  */
+  const [form, setForm] = useState({
+    firstName: "",
+    middleInitial: "",
+    lastName: "",
+    email: "",
+    phoneNumber: "",
+    gender: "",
+    bloodType: "",
+    region: "",
+    province: "",
+    city: "",
+    barangay: "",
+    password: "",
+    confirmPassword: "",
+  });
 
-        const provinceOptions = form.region
-          ? Object.keys(locationData[form.region] || {})
-          : [];
+  /*
+    Modal states.
 
-        const cityOptions =
-          form.region && form.province
-            ? Object.keys(locationData[form.region]?.[form.province] || {})
-            : [];
+    Purpose:
+    - Controls Gender, Blood Type, and Location modals.
+  */
+  const [showGenderModal, setShowGenderModal] = useState(false);
+  const [showBloodTypeModal, setShowBloodTypeModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
-        const barangayOptions =
-          form.region && form.province && form.city
-            ? locationData[form.region]?.[form.province]?.[form.city] || []
-            : [];
+  /*
+    Helper function.
 
-        /*
-          Front-end validation before sending to backend.
-          Backend should still validate again later.
-        */
-      const validateForm = () => {
-        if (
-          !form.firstName.trim() ||
-          !form.lastName.trim() ||
-          !form.email.trim() ||
-          !form.phoneNumber.trim() ||
-          !form.gender ||
-          !form.bloodType ||
-          !form.region ||
-          !form.province ||
-          !form.city ||
-          !form.barangay ||
-          !form.password ||
-          !form.confirmPassword
-        ) {
-          Alert.alert("Missing details", "Please complete all required fields.");
-          return false;
-        }
+    Purpose:
+    - Updates one form field without repeating setForm code.
+  */
+  const updateForm = (key: keyof typeof form, value: string) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
 
-        if (!form.email.includes("@")) {
-          Alert.alert("Invalid email", "Please enter a valid email address.");
-          return false;
-        }
+  /*
+    Full name.
 
-        if (form.phoneNumber.length < 10) {
-          Alert.alert("Invalid phone number", "Please enter a valid phone number.");
-          return false;
-        }
+    Purpose:
+    - Combines first name, middle initial, and last name.
+  */
+  const fullName = `${form.firstName} ${form.middleInitial} ${form.lastName}`
+    .replace(/\s+/g, " ")
+    .trim();
 
-        if (form.password.length < 6) {
-          Alert.alert("Weak password", "Password must be at least 6 characters.");
-          return false;
-        }
+  /*
+    Location display text.
 
-        if (form.password !== form.confirmPassword) {
-          Alert.alert(
-            "Password mismatch",
-            "Password and confirm password do not match."
-          );
-          return false;
-        }
+    Purpose:
+    - Shows selected location inside location field.
+  */
+  const locationText =
+    form.region && form.province && form.city && form.barangay
+      ? `${form.region}, ${form.province}, ${form.city}, ${form.barangay}`
+      : "Region, Province, City, Barangay";
 
-        if (!acceptedTerms) {
-          Alert.alert(
-            "Terms and Conditions",
-            "Please agree to the Terms and Conditions before signing up."
-          );
-          return false;
-        }
+  /*
+    Cascading location options.
 
-        return true;
-      };
+    Purpose:
+    - Province depends on selected region.
+    - City depends on selected province.
+    - Barangay depends on selected city.
+  */
+  const provinceOptions = form.region
+    ? Object.keys(locationData[form.region] || {})
+    : [];
 
-      const handleSignUp = async () => {
-        if (!validateForm()) return;
+  const cityOptions =
+    form.region && form.province
+      ? Object.keys(locationData[form.region]?.[form.province] || {})
+      : [];
 
-        const payload: RegisterPayload = {
-          firstName: form.firstName.trim(),
-          middleInitial: form.middleInitial.trim().toUpperCase(),
-          lastName: form.lastName.trim(),
-          email: form.email.trim().toLowerCase(),
-          phoneNumber: form.phoneNumber.trim(),
-          gender: form.gender,
-          bloodType: form.bloodType,
-          region: form.region,
-          province: form.province,
-          city: form.city,
-          barangay: form.barangay,
-          password: form.password,
-          acceptedTerms: acceptedTerms,
-        };
+  const barangayOptions =
+    form.region && form.province && form.city
+      ? locationData[form.region]?.[form.province]?.[form.city] || []
+      : [];
 
-        try {
-          setIsSubmitting(true);
+  /*
+    Front-end validation.
 
-          const response = await registerUser(payload);
+    Purpose:
+    - Prevents empty/invalid input before sending data to backend.
+    - Backend should still validate again later.
+  */
+  const validateForm = () => {
+    if (
+      !form.firstName.trim() ||
+      !form.lastName.trim() ||
+      !form.email.trim() ||
+      !form.phoneNumber.trim() ||
+      !form.gender ||
+      !form.bloodType ||
+      !form.region ||
+      !form.province ||
+      !form.city ||
+      !form.barangay ||
+      !form.password ||
+      !form.confirmPassword
+    ) {
+      Alert.alert("Missing details", "Please complete all required fields.");
+      return false;
+    }
 
-          if (!response.success) {
-            Alert.alert("Registration failed", "Please try again.");
-            return;
-          }
+    if (!form.email.includes("@")) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return false;
+    }
 
-        router.replace({
-          pathname: "/login",
-          params: {
-            registered: "true",
-            email: payload.email,
-          },
-        });
-        } catch (error) {
-          Alert.alert("Something went wrong", "Unable to create account.");
-        } finally {
-          setIsSubmitting(false);
-        }
-      };
+    if (form.phoneNumber.length < 10) {
+      Alert.alert("Invalid phone number", "Please enter a valid phone number.");
+      return false;
+    }
+
+    if (form.password.length < 6) {
+      Alert.alert("Weak password", "Password must be at least 6 characters.");
+      return false;
+    }
+
+    if (form.password !== form.confirmPassword) {
+      Alert.alert(
+        "Password mismatch",
+        "Password and confirm password do not match."
+      );
+      return false;
+    }
+
+    if (!acceptedTerms) {
+      Alert.alert(
+        "Terms and Conditions",
+        "Please agree to the Terms and Conditions before signing up."
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  /*
+    Sign up function.
+
+    Purpose:
+    - Validates form.
+    - Builds backend-ready payload.
+    - Calls registerUser placeholder.
+    - Redirects user to Login after successful registration.
+  */
+  const handleSignUp = async () => {
+    if (!validateForm()) return;
+
+    const payload: RegisterPayload = {
+      firstName: form.firstName.trim(),
+      middleInitial: form.middleInitial.trim().toUpperCase(),
+      lastName: form.lastName.trim(),
+      email: form.email.trim().toLowerCase(),
+      phoneNumber: form.phoneNumber.trim(),
+      gender: form.gender,
+      bloodType: form.bloodType,
+      region: form.region,
+      province: form.province,
+      city: form.city,
+      barangay: form.barangay,
+      password: form.password,
+      acceptedTerms,
+    };
+
+    try {
+      setIsSubmitting(true);
+
+      const response = await registerUser(payload);
+
+      if (!response.success) {
+        Alert.alert("Registration failed", "Please try again.");
+        return;
+      }
+
+      /*
+        After registration, user goes to login.
+
+        Note:
+        - Later, backend will save user data.
+        - Login will fetch the saved user profile after successful login.
+      */
+      router.replace({
+        pathname: "/login",
+        params: {
+          registered: "true",
+          email: payload.email,
+        },
+      });
+    } catch (error) {
+      Alert.alert("Something went wrong", "Unable to create account.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -254,6 +335,7 @@ export default function RegisterScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Page title */}
         <Text style={styles.title}>Register</Text>
         <Text style={styles.description}>Create your LifeFlow account</Text>
 
@@ -286,6 +368,7 @@ export default function RegisterScreen() {
           />
         </View>
 
+        {/* Email field */}
         <TextInput
           placeholder="Email Address"
           placeholderTextColor="#999"
@@ -296,6 +379,7 @@ export default function RegisterScreen() {
           onChangeText={(text) => updateForm("email", text)}
         />
 
+        {/* Phone number field */}
         <TextInput
           placeholder="Phone Number"
           placeholderTextColor="#999"
@@ -305,6 +389,7 @@ export default function RegisterScreen() {
           onChangeText={(text) => updateForm("phoneNumber", text)}
         />
 
+        {/* Gender picker */}
         <TouchableOpacity
           style={styles.dropdown}
           activeOpacity={0.85}
@@ -320,6 +405,7 @@ export default function RegisterScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Blood type picker */}
         <TouchableOpacity
           style={styles.dropdown}
           activeOpacity={0.85}
@@ -335,6 +421,7 @@ export default function RegisterScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Location picker */}
         <TouchableOpacity
           style={styles.dropdown}
           activeOpacity={0.85}
@@ -353,40 +440,46 @@ export default function RegisterScreen() {
           <Text style={styles.arrow}>›</Text>
         </TouchableOpacity>
 
-        <TextInput
+        {/* Password with eye icon */}
+        <PasswordField
           placeholder="Password"
-          placeholderTextColor="#999"
-          secureTextEntry
-          style={styles.input}
           value={form.password}
+          visible={showPassword}
           onChangeText={(text) => updateForm("password", text)}
+          onToggle={() => setShowPassword(!showPassword)}
         />
 
-        <TextInput
+        {/* Confirm password with eye icon */}
+        <PasswordField
           placeholder="Confirm Password"
-          placeholderTextColor="#999"
-          secureTextEntry
-          style={styles.input}
           value={form.confirmPassword}
+          visible={showConfirmPassword}
           onChangeText={(text) => updateForm("confirmPassword", text)}
+          onToggle={() => setShowConfirmPassword(!showConfirmPassword)}
         />
 
-        {/* Terms and Conditions checkbox */}
-        <TouchableOpacity
-          style={styles.termsRow}
-          activeOpacity={0.85}
-          onPress={() => setAcceptedTerms(!acceptedTerms)}
-        >
-          <View style={[styles.checkbox, acceptedTerms && styles.checkedBox]}>
+        {/* Terms and Conditions row */}
+        <View style={styles.termsRow}>
+          <TouchableOpacity
+            style={[styles.checkbox, acceptedTerms && styles.checkedBox]}
+            activeOpacity={0.85}
+            onPress={() => setAcceptedTerms(!acceptedTerms)}
+          >
             {acceptedTerms && <Text style={styles.checkMark}>✓</Text>}
-          </View>
+          </TouchableOpacity>
 
           <Text style={styles.termsText}>
             I agree to the{" "}
-            <Text style={styles.termsLink}>Terms and Conditions</Text>
+            <Text
+              style={styles.termsLink}
+              onPress={() => setShowTermsModal(true)}
+            >
+              Terms and Conditions
+            </Text>
           </Text>
-        </TouchableOpacity>
+        </View>
 
+        {/* Sign Up button */}
         <TouchableOpacity
           style={[styles.button, isSubmitting && styles.disabledButton]}
           activeOpacity={0.85}
@@ -400,6 +493,7 @@ export default function RegisterScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Login link */}
         <View style={styles.loginRow}>
           <Text style={styles.bottomText}>Already have an account?</Text>
 
@@ -409,6 +503,7 @@ export default function RegisterScreen() {
         </View>
       </ScrollView>
 
+      {/* Gender modal */}
       <OptionModal
         visible={showGenderModal}
         title="Select Gender"
@@ -421,6 +516,7 @@ export default function RegisterScreen() {
         }}
       />
 
+      {/* Blood type modal */}
       <OptionModal
         visible={showBloodTypeModal}
         title="Select Blood Type"
@@ -433,6 +529,7 @@ export default function RegisterScreen() {
         }}
       />
 
+      {/* Location modal */}
       <Modal
         visible={showLocationModal}
         transparent
@@ -548,13 +645,75 @@ export default function RegisterScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Terms and Conditions modal */}
+      <Modal
+        visible={showTermsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.termsModalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Terms and Conditions</Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.termsParagraph}>
+                By creating a LifeFlow account, you agree to provide true and
+                accurate personal information, including your blood type, contact
+                number, and location details.
+              </Text>
+
+              <Text style={styles.termsParagraph}>
+                LifeFlow is designed to help connect blood seekers and possible
+                blood donors. Blood requests must only be made for real and valid
+                medical needs.
+              </Text>
+
+              <Text style={styles.termsParagraph}>
+                Users must not post false donor information, fake blood requests,
+                or misleading medical details. Any proof or document uploaded
+                must be valid and related to the blood request.
+              </Text>
+
+              <Text style={styles.termsParagraph}>
+                Donors and seekers are responsible for communicating respectfully
+                and confirming important details before proceeding with any blood
+                donation arrangement.
+              </Text>
+
+              <Text style={styles.termsParagraph}>
+                LifeFlow may use the provided information to match blood seekers
+                with possible donors based on blood type, location, and
+                availability.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.agreeButton}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setAcceptedTerms(true);
+                  setShowTermsModal(false);
+                }}
+              >
+                <Text style={styles.agreeButtonText}>I AGREE</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
 
 /*
-  Reusable modal.
-  Later pwede ilipat sa components/OptionModal.tsx
+  Reusable option modal.
+
+  Purpose:
+  - Used for Gender and Blood Type.
+  - Later, pwede ilipat sa src/components/OptionModal.tsx.
 */
 function OptionModal({
   visible,
@@ -611,7 +770,10 @@ function OptionModal({
 
 /*
   Reusable location chip.
-  Later pwede ilipat sa components/LocationChip.tsx
+
+  Purpose:
+  - Used inside the location picker.
+  - Later, pwede ilipat sa src/components/LocationChip.tsx.
 */
 function LocationChip({
   label,
@@ -648,7 +810,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 25,
-    paddingBottom: 55,
+    paddingBottom: 25,
   },
 
   title: {
@@ -778,8 +940,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 20,
-    marginBottom: 50,
+    marginTop: 18,
+    marginBottom: 20,
   },
 
   bottomText: {
@@ -808,6 +970,13 @@ const styles = StyleSheet.create({
 
   locationModalCard: {
     maxHeight: "85%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 25,
+    padding: 20,
+  },
+
+  termsModalCard: {
+    maxHeight: "80%",
     backgroundColor: "#FFFFFF",
     borderRadius: 25,
     padding: 20,
@@ -910,6 +1079,29 @@ const styles = StyleSheet.create({
   },
 
   doneButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  termsParagraph: {
+    color: "#555",
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+
+  agreeButton: {
+    backgroundColor: RED,
+    height: 52,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 5,
+  },
+
+  agreeButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "900",
